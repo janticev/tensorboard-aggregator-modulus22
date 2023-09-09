@@ -148,7 +148,7 @@ if __name__ == '__main__':
         raise argparse.ArgumentTypeError("Parameter {} is not a valid path".format(path))
 
     subpaths = [path / dname / subpath for subpath in args.subpaths for dname in os.listdir(path) if dname != FOLDER_NAME]
-
+    #print(subpaths)
     for subpath in subpaths:
         if not os.path.exists(subpath):
             raise argparse.ArgumentTypeError("Parameter {} is not a valid path".format(subpath))
