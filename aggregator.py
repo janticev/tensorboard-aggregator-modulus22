@@ -15,19 +15,25 @@ import numpy as np
 import tensorflow as tf
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from tensorflow.core.util.event_pb2 import Event
+import pdb
 
 FOLDER_NAME = 'aggregates'
 
 
 def extract(dpath, subpath):
-    scalar_accumulators = [EventAccumulator(str(dpath / dname / subpath)).Reload(
-    ).scalars for dname in os.listdir(dpath) if dname != FOLDER_NAME]
+    scalar_accumulators = [EventAccumulator(str(dpath / dname / subpath), size_guidance = {'tensors':int(args.size)}).Reload(
+    ).tensors for dname in os.listdir(dpath) if dname != FOLDER_NAME]
+
+    #print(scalar_accumulators)
+    #print([(dname,subpath) for dname in os.listdir(dpath) if dname != FOLDER_NAME])
 
     # Filter non event files
     scalar_accumulators = [scalar_accumulator for scalar_accumulator in scalar_accumulators if scalar_accumulator.Keys()]
-
+    #print(scalar_accumulators)
     # Get and validate all scalar keys
-    all_keys = [tuple(scalar_accumulator.Keys()) for scalar_accumulator in scalar_accumulators]
+    all_keys = [tuple([i for i in scalar_accumulator.Keys() if 'config/text_summary' not in i]) for scalar_accumulator in scalar_accumulators]
+    print(all_keys)
+    pdb.set_trace()
     assert len(set(all_keys)) == 1, "All runs need to have the same scalar keys. There are mismatches in {}".format(all_keys)
     keys = all_keys[0]
 
@@ -48,9 +54,13 @@ def extract(dpath, subpath):
                           for all_scalar_events in all_scalar_events_per_key]
 
     # Get values per step per key
-    values_per_key = [[[scalar_event.value for scalar_event in scalar_events] for scalar_events in all_scalar_events]
+    try:
+        values_per_key = [[[scalar_event.tensor_proto.float_val[0] for scalar_event in scalar_events] for scalar_events in all_scalar_events]
                       for all_scalar_events in all_scalar_events_per_key]
-
+    except:
+        print ([[[scalar_event.tensor_proto for scalar_event in scalar_events] for scalar_events in all_scalar_events]
+                      for all_scalar_events in all_scalar_events_per_key])
+    pdb.set_trace()
     all_per_key = dict(zip(keys, zip(steps_per_key, wall_times_per_key, values_per_key)))
 
     return all_per_key
@@ -72,12 +82,13 @@ def write_summary(dpath, aggregations_per_key):
             with writer.as_default():
                 tf.summary.scalar(key, aggregation, step=step)
                 writer.flush()
+    #pdb.set_trace() #EventAccumulator(str(C:\Users\jacec\Documents\Test_Runs\512x16000\aggregates\mean\512x16000), size_guidance = {'tensors':0})
 
 def aggregate_to_csv(dpath, aggregation_ops, extracts_per_subpath):
     for subpath, all_per_key in extracts_per_subpath.items():
         for key, (steps, wall_times, values) in all_per_key.items():
             aggregations = [op(values, axis=0) for op in aggregation_ops]
-            write_csv(dpath, subpath, key, dpath.name, aggregations, steps, aggregation_ops)
+            write_csv(dpath, subpath, key, dpath.name, aggregations, steps, aggregation_ops, wall_times)
 
 
 def get_valid_filename(s):
@@ -85,7 +96,7 @@ def get_valid_filename(s):
     return re.sub(r'(?u)[^-\w.]', '', s)
 
 
-def write_csv(dpath, subpath, key, fname, aggregations, steps, aggregation_ops):
+def write_csv(dpath, subpath, key, fname, aggregations, steps, aggregation_ops, wall_times):
     path = dpath / FOLDER_NAME
 
     if not path.exists():
@@ -94,6 +105,7 @@ def write_csv(dpath, subpath, key, fname, aggregations, steps, aggregation_ops):
     file_name = get_valid_filename(key) + '-' + get_valid_filename(subpath) + '-' + fname + '.csv'
     aggregation_ops_names = [aggregation_op.__name__ for aggregation_op in aggregation_ops]
     df = pd.DataFrame(np.transpose(aggregations), index=steps, columns=aggregation_ops_names)
+    df.insert(len(aggregation_ops_names), "wall_time", wall_times)
     df.to_csv(path / file_name, sep=';')
 
 
@@ -127,7 +139,7 @@ if __name__ == '__main__':
     parser.add_argument("--path", type=str, help="main path for tensorboard files", default=os.getcwd())
     parser.add_argument("--subpaths", type=param_list, help="subpath structures", default=['.'])
     parser.add_argument("--output", type=str, help="aggregation can be saved as tensorboard file (summary) or as table (csv)", default='summary')
-
+    parser.add_argument("--size", type=int, help="# of samples", default=100)
     args = parser.parse_args()
 
     path = Path(args.path)
