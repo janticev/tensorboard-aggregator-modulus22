@@ -33,7 +33,7 @@ def extract(dpath, subpath):
     # Get and validate all scalar keys
     all_keys = [tuple([i for i in scalar_accumulator.Keys() if 'config/text_summary' not in i]) for scalar_accumulator in scalar_accumulators]
     print(all_keys)
-    pdb.set_trace()
+    #pdb.set_trace()
     assert len(set(all_keys)) == 1, "All runs need to have the same scalar keys. There are mismatches in {}".format(all_keys)
     keys = all_keys[0]
 
@@ -60,7 +60,7 @@ def extract(dpath, subpath):
     except:
         print ([[[scalar_event.tensor_proto for scalar_event in scalar_events] for scalar_events in all_scalar_events]
                       for all_scalar_events in all_scalar_events_per_key])
-    pdb.set_trace()
+    #pdb.set_trace()
     all_per_key = dict(zip(keys, zip(steps_per_key, wall_times_per_key, values_per_key)))
 
     return all_per_key
